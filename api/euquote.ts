@@ -19,8 +19,61 @@ function setCache(key: string, data: unknown): void {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
-// EU exchange identifiers
-const EU_EXCHANGES = ['GER', 'FRA', 'ETR', 'STU', 'MUN', 'HAM', 'DUS', 'BER', 'XETRA'];
+// Generate possible German ticker variants
+function getGermanTickerVariants(usSymbol: string): string[] {
+  const base = usSymbol.toUpperCase();
+  const variants: string[] = [];
+
+  // Common patterns for German listings
+  // 1. Same ticker with .DE suffix (XETRA)
+  variants.push(`${base}.DE`);
+
+  // 2. Shortened ticker (AMZN -> AMZ, MSFT -> MSF, GOOGL -> GOOG)
+  if (base.length >= 4) {
+    variants.push(`${base.slice(0, 3)}.DE`);
+  }
+  if (base.length >= 5) {
+    variants.push(`${base.slice(0, 4)}.DE`);
+  }
+
+  // 3. Frankfurt suffix
+  variants.push(`${base}.F`);
+  if (base.length >= 4) {
+    variants.push(`${base.slice(0, 3)}.F`);
+  }
+
+  // 4. Other German exchanges
+  variants.push(`${base}.MU`); // Munich
+  variants.push(`${base}.SG`); // Stuttgart
+
+  return variants;
+}
+
+async function tryGetQuote(
+  symbol: string,
+  apiKey: string,
+  apiHost: string
+): Promise<Record<string, unknown> | null> {
+  try {
+    const response = await axios.get(`https://${apiHost}/market/v2/get-quotes`, {
+      params: { symbols: symbol, region: 'DE' },
+      headers: {
+        'X-RapidAPI-Key': apiKey,
+        'X-RapidAPI-Host': apiHost,
+      },
+      timeout: 5000,
+    });
+
+    const quote = response.data?.quoteResponse?.result?.[0];
+    // Check if we got valid EUR data
+    if (quote && quote.regularMarketPrice && quote.currency === 'EUR') {
+      return quote;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -47,83 +100,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const apiHost = process.env.YAHOO_API_HOST || 'yh-finance.p.rapidapi.com';
 
     if (!apiKey) {
-      return res.status(500).json({ error: 'API key not configured' });
+      return res.status(404).json({ error: 'API key not configured' });
     }
 
-    // Step 1: Get the company name from the US symbol
-    let companyName = usSymbol;
-    try {
-      const quoteResponse = await axios.get(`https://${apiHost}/market/v2/get-quotes`, {
-        params: { symbols: usSymbol, region: 'US' },
-        headers: {
-          'X-RapidAPI-Key': apiKey,
-          'X-RapidAPI-Host': apiHost,
-        },
-      });
-      const usQuote = quoteResponse.data?.quoteResponse?.result?.[0];
-      if (usQuote?.shortName) {
-        companyName = usQuote.shortName;
-      } else if (usQuote?.longName) {
-        companyName = usQuote.longName;
+    // Try all German ticker variants
+    const variants = getGermanTickerVariants(usSymbol);
+
+    for (const variant of variants) {
+      const quote = await tryGetQuote(variant, apiKey, apiHost);
+
+      if (quote) {
+        const result = {
+          symbol: quote.symbol,
+          price: quote.regularMarketPrice,
+          currency: quote.currency || 'EUR',
+          change: quote.regularMarketChange,
+          changePercent: quote.regularMarketChangePercent,
+          previousClose: quote.regularMarketPreviousClose,
+          open: quote.regularMarketOpen,
+          dayHigh: quote.regularMarketDayHigh,
+          dayLow: quote.regularMarketDayLow,
+          volume: quote.regularMarketVolume,
+          avgVolume30d: quote.averageDailyVolume3Month,
+          timestamp: new Date((quote.regularMarketTime as number) * 1000),
+          exchange: quote.fullExchangeName || quote.exchange,
+          marketState: quote.marketState || 'CLOSED',
+        };
+
+        setCache(cacheKey, result);
+        return res.status(200).json(result);
       }
-    } catch (e) {
-      console.log('Could not get company name, using symbol');
     }
 
-    // Step 2: Search for EU listings using the company name
-    const searchResponse = await axios.get(`https://${apiHost}/auto-complete`, {
-      params: { q: companyName, region: 'DE' },
-      headers: {
-        'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': apiHost,
-      },
+    // No German listing found
+    return res.status(404).json({
+      error: 'No EU listing found',
+      triedVariants: variants
     });
-
-    const searchResults = searchResponse.data?.quotes || [];
-
-    // Find an EU listing (prefer German exchanges)
-    const euListing = searchResults.find((result: { exchange: string; quoteType: string }) =>
-      EU_EXCHANGES.includes(result.exchange) &&
-      (result.quoteType === 'EQUITY' || result.quoteType === 'ETF')
-    );
-
-    if (!euListing) {
-      return res.status(404).json({ error: 'No EU listing found', searched: companyName });
-    }
-
-    // Step 3: Get the quote for the EU symbol
-    const euQuoteResponse = await axios.get(`https://${apiHost}/market/v2/get-quotes`, {
-      params: { symbols: euListing.symbol, region: 'DE' },
-      headers: {
-        'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': apiHost,
-      },
-    });
-
-    const euQuote = euQuoteResponse.data?.quoteResponse?.result?.[0];
-    if (!euQuote) {
-      return res.status(404).json({ error: 'Could not fetch EU quote' });
-    }
-
-    const result = {
-      symbol: euQuote.symbol,
-      price: euQuote.regularMarketPrice,
-      currency: euQuote.currency || 'EUR',
-      change: euQuote.regularMarketChange,
-      changePercent: euQuote.regularMarketChangePercent,
-      previousClose: euQuote.regularMarketPreviousClose,
-      open: euQuote.regularMarketOpen,
-      dayHigh: euQuote.regularMarketDayHigh,
-      dayLow: euQuote.regularMarketDayLow,
-      volume: euQuote.regularMarketVolume,
-      avgVolume30d: euQuote.averageDailyVolume3Month,
-      timestamp: new Date(euQuote.regularMarketTime * 1000),
-      exchange: euQuote.fullExchangeName || euQuote.exchange,
-      marketState: euQuote.marketState || 'CLOSED',
-    };
-
-    setCache(cacheKey, result);
-    return res.status(200).json(result);
   } catch (error) {
     console.error('EU Quote error:', error);
     return res.status(500).json({ error: 'Failed to fetch EU quote' });
