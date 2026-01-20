@@ -32,7 +32,6 @@ export function PriceCardsContainer({ symbol }: PriceCardsContainerProps) {
   const isEu = isEuSymbol(symbol);
 
   // If EU symbol entered, use it for EU quote and try to find US equivalent
-  const euSymbol = isEu ? symbol : null;
   const usSymbol = isEu ? getUsSymbol(symbol) : symbol;
 
   // For EU symbols, we swap the logic
