@@ -22,7 +22,7 @@ export const stockApi = {
   async getEuQuote(usSymbol: string): Promise<StockQuote | null> {
     try {
       // Use the new EU quote endpoint that searches by company name
-      const { data } = await apiClient.get<StockQuote>('/eu-quote', {
+      const { data } = await apiClient.get<StockQuote>('/euquote', {
         params: { symbol: usSymbol },
       });
       if (data && data.price) {
