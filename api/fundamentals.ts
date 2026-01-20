@@ -47,24 +47,68 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'API key not configured' });
     }
 
-    const { data } = await axios.get(`https://${apiHost}/stock/v2/get-summary`, {
-      params: { symbol, region: 'US' },
-      headers: {
-        'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': apiHost,
-      },
-    });
+    // Try to get data from multiple endpoints for better coverage
+    let summaryData: Record<string, unknown> = {};
+    let quoteData: Record<string, unknown> = {};
 
-    const summary = data.summaryDetail || {};
-    const keyStats = data.defaultKeyStatistics || {};
-    const financial = data.financialData || {};
+    // First try the summary endpoint
+    try {
+      const summaryResponse = await axios.get(`https://${apiHost}/stock/v2/get-summary`, {
+        params: { symbol, region: 'US' },
+        headers: {
+          'X-RapidAPI-Key': apiKey,
+          'X-RapidAPI-Host': apiHost,
+        },
+      });
+      summaryData = summaryResponse.data || {};
+    } catch (e) {
+      console.log('Summary endpoint failed, trying quote endpoint');
+    }
 
+    // Also try the quote endpoint for additional data
+    try {
+      const quoteResponse = await axios.get(`https://${apiHost}/market/v2/get-quotes`, {
+        params: { symbols: symbol, region: 'US' },
+        headers: {
+          'X-RapidAPI-Key': apiKey,
+          'X-RapidAPI-Host': apiHost,
+        },
+      });
+      quoteData = quoteResponse.data?.quoteResponse?.result?.[0] || {};
+    } catch (e) {
+      console.log('Quote endpoint failed');
+    }
+
+    // Extract data from various possible locations
+    const summary = (summaryData as { summaryDetail?: Record<string, { raw?: number }> }).summaryDetail || {};
+    const keyStats = (summaryData as { defaultKeyStatistics?: Record<string, { raw?: number }> }).defaultKeyStatistics || {};
+    const financial = (summaryData as { financialData?: Record<string, { raw?: number }> }).financialData || {};
+    const price = (summaryData as { price?: Record<string, { raw?: number }> }).price || {};
+    const quote = quoteData as Record<string, number | undefined>;
+
+    // Build result with fallbacks from multiple sources
     const result = {
-      marketCap: summary.marketCap?.raw || null,
-      peRatioTTM: summary.trailingPE?.raw || null,
-      dividendYield: summary.dividendYield?.raw ? summary.dividendYield.raw * 100 : null,
-      revenueGrowthYoY: financial.revenueGrowth?.raw ? financial.revenueGrowth.raw * 100 : null,
-      beta: keyStats.beta?.raw || summary.beta?.raw || null,
+      marketCap:
+        summary.marketCap?.raw ||
+        price.marketCap?.raw ||
+        quote.marketCap ||
+        null,
+      peRatioTTM:
+        summary.trailingPE?.raw ||
+        quote.trailingPE ||
+        null,
+      dividendYield:
+        (summary.dividendYield?.raw ? summary.dividendYield.raw * 100 : null) ||
+        (quote.trailingAnnualDividendYield ? quote.trailingAnnualDividendYield * 100 : null) ||
+        null,
+      revenueGrowthYoY:
+        (financial.revenueGrowth?.raw ? financial.revenueGrowth.raw * 100 : null) ||
+        null,
+      beta:
+        keyStats.beta?.raw ||
+        summary.beta?.raw ||
+        quote.beta ||
+        null,
     };
 
     setCache(cacheKey, result);
