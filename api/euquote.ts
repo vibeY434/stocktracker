@@ -21,28 +21,56 @@ function setCache(key: string, data: unknown): void {
 
 // Known US -> German ticker mappings (for stocks with different symbols)
 const US_TO_DE_MAPPING: Record<string, string[]> = {
-  // Popular small/mid caps with different German tickers
+  // Chinese ADRs
+  'BABA': ['AHLA.DE', 'AHLA.F'],     // Alibaba
+  'BIDU': ['B1C.DE', 'B1C.F'],       // Baidu
+  'JD': ['013A.DE', '013A.F'],       // JD.com
+  'NIO': ['NIO1.DE', 'NIO1.F'],      // NIO
+  'GRAB': ['A6I.DE', 'A6I.F'],       // Grab Holdings
+
+  // European stocks traded in US
+  'NVO': ['NOV.DE', 'NOVA.F'],       // Novo Nordisk
+  'ADUR': ['1N8.DE', '1N8.F'],       // Adyen (Euronext -> XETRA)
+
+  // Popular growth stocks with different German tickers
   'HIMS': ['82W.DE', '82W.F', '82W.SG'],
-  'ONDS': ['6O9.DE', '6O9.F'],  // Ondas Holdings
-  'PLTR': ['PTX.DE', 'PTX.F'],  // Palantir
-  'SOFI': ['4S0.DE', '4S0.F'],  // SoFi Technologies
-  'RIVN': ['1R1.DE', '1R1.F'],  // Rivian
-  'LCID': ['2LC.DE', '2LC.F'],  // Lucid Motors
-  'NIO': ['NIO1.DE', 'NIO1.F'], // NIO
-  'HOOD': ['6HH.DE', '6HH.F'],  // Robinhood
-  'COIN': ['1QZ.DE', '1QZ.F'],  // Coinbase
-  'AFRM': ['5AF.DE', '5AF.F'],  // Affirm
-  'UPST': ['UP2.DE', 'UP2.F'],  // Upstart
-  'RKLB': ['RKLB.DE', 'RKLB.F'], // Rocket Lab
-  'SNOW': ['S4O.DE', 'S4O.F'],  // Snowflake
-  'CRWD': ['C6R.DE', 'C6R.F'],  // CrowdStrike
-  'DDOG': ['4DO.DE', '4DO.F'],  // Datadog
-  'NET': ['N3T.DE', 'N3T.F'],   // Cloudflare
-  'ZS': ['Z1S.DE', 'Z1S.F'],    // Zscaler
-  'TTD': ['T2D.DE', 'T2D.F'],   // The Trade Desk
-  'MARA': ['2M0.DE', '2M0.F'],  // Marathon Digital
-  'RIOT': ['RIO1.DE', 'RIO1.F'], // Riot Platforms
-  'SMCI': ['0AI.DE', '0AI.F'],  // Super Micro Computer
+  'ONDS': ['6O9.DE', '6O9.F'],       // Ondas Holdings
+  'ASTS': ['AS5.DE', 'AS5.F'],       // AST SpaceMobile
+  'OSCR': ['9VY.DE', '9VY.F'],       // Oscar Health
+  'PLTR': ['PTX.DE', 'PTX.F'],       // Palantir
+  'SOFI': ['4S0.DE', '4S0.F'],       // SoFi Technologies
+  'RIVN': ['1R1.DE', '1R1.F'],       // Rivian
+  'LCID': ['2LC.DE', '2LC.F'],       // Lucid Motors
+  'HOOD': ['6HH.DE', '6HH.F'],       // Robinhood
+  'COIN': ['1QZ.DE', '1QZ.F'],       // Coinbase
+  'AFRM': ['5AF.DE', '5AF.F'],       // Affirm
+  'UPST': ['UP2.DE', 'UP2.F'],       // Upstart
+  'RKLB': ['RKLB.DE', 'RKLB.F'],     // Rocket Lab
+  'SNOW': ['S4O.DE', 'S4O.F'],       // Snowflake
+  'CRWD': ['C6R.DE', 'C6R.F'],       // CrowdStrike
+  'DDOG': ['4DO.DE', '4DO.F'],       // Datadog
+  'NET': ['N3T.DE', 'N3T.F'],        // Cloudflare
+  'ZS': ['Z1S.DE', 'Z1S.F'],         // Zscaler
+  'TTD': ['T2D.DE', 'T2D.F'],        // The Trade Desk
+  'MARA': ['2M0.DE', '2M0.F'],       // Marathon Digital
+  'RIOT': ['RIO1.DE', 'RIO1.F'],     // Riot Platforms
+  'SMCI': ['0AI.DE', '0AI.F'],       // Super Micro Computer
+  'ABNB': ['6Z1.DE', '6Z1.F'],       // Airbnb
+  'ACHR': ['AC7.DE', 'AC7.F'],       // Archer Aviation
+  'ZETA': ['3ZT.DE', '3ZT.F'],       // Zeta Global
+  'ZVRA': ['4ZV.DE', '4ZV.F'],       // Zevra Therapeutics
+  'ASPN': ['2AP.DE', '2AP.F'],       // Aspen Aerogels
+  'GRRR': ['1GR.DE', '1GR.F'],       // Gorilla Technology
+  'ONTO': ['0NT.DE', '0NT.F'],       // Onto Innovation
+  'UNH': ['UNH.DE', 'UNH.F'],        // UnitedHealth
+  'UPS': ['UPS.DE', 'UPS.F'],        // UPS
+  'NKE': ['NKE.DE', 'NKE.F'],        // Nike
+  'PYPL': ['2PP.DE', '2PP.F'],       // PayPal
+  'SHOP': ['SH0.DE', 'SH0.F'],       // Shopify
+  'TGT': ['TGT.DE', 'TGT.F'],        // Target
+  'PFE': ['PFE.DE', 'PFE.F'],        // Pfizer
+  'OXY': ['OXY.DE', 'OXY.F'],        // Occidental Petroleum
+  'ANF': ['ANF.DE', 'ANF.F'],        // Abercrombie & Fitch
 };
 
 // Generate possible German ticker variants
