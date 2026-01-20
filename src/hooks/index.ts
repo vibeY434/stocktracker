@@ -5,3 +5,4 @@ export * from './useCompanyInfo';
 export * from './useFundamentals';
 export * from './useHistoricalData';
 export * from './useFxRate';
+export * from './usePrefetch';
