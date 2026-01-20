@@ -44,78 +44,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const apiHost = process.env.YAHOO_API_HOST || 'yh-finance.p.rapidapi.com';
 
     if (!apiKey) {
-      return res.status(500).json({ error: 'API key not configured' });
-    }
-
-    // Try to get data from multiple endpoints for better coverage
-    let summaryData: Record<string, unknown> = {};
-    let quoteData: Record<string, unknown> = {};
-
-    // First try the summary endpoint
-    try {
-      const summaryResponse = await axios.get(`https://${apiHost}/stock/v2/get-summary`, {
-        params: { symbol, region: 'US' },
-        headers: {
-          'X-RapidAPI-Key': apiKey,
-          'X-RapidAPI-Host': apiHost,
-        },
+      return res.status(200).json({
+        marketCap: null,
+        peRatioTTM: null,
+        dividendYield: null,
+        revenueGrowthYoY: null,
+        beta: null,
       });
-      summaryData = summaryResponse.data || {};
-    } catch (e) {
-      console.log('Summary endpoint failed, trying quote endpoint');
     }
 
-    // Also try the quote endpoint for additional data
-    try {
-      const quoteResponse = await axios.get(`https://${apiHost}/market/v2/get-quotes`, {
-        params: { symbols: symbol, region: 'US' },
-        headers: {
-          'X-RapidAPI-Key': apiKey,
-          'X-RapidAPI-Host': apiHost,
-        },
+    // Use the quotes endpoint which we know works
+    const quoteResponse = await axios.get(`https://${apiHost}/market/v2/get-quotes`, {
+      params: { symbols: symbol, region: 'US' },
+      headers: {
+        'X-RapidAPI-Key': apiKey,
+        'X-RapidAPI-Host': apiHost,
+      },
+    });
+
+    const quote = quoteResponse.data?.quoteResponse?.result?.[0];
+
+    if (!quote) {
+      return res.status(200).json({
+        marketCap: null,
+        peRatioTTM: null,
+        dividendYield: null,
+        revenueGrowthYoY: null,
+        beta: null,
       });
-      quoteData = quoteResponse.data?.quoteResponse?.result?.[0] || {};
-    } catch (e) {
-      console.log('Quote endpoint failed');
     }
 
-    // Extract data from various possible locations
-    const summary = (summaryData as { summaryDetail?: Record<string, { raw?: number }> }).summaryDetail || {};
-    const keyStats = (summaryData as { defaultKeyStatistics?: Record<string, { raw?: number }> }).defaultKeyStatistics || {};
-    const financial = (summaryData as { financialData?: Record<string, { raw?: number }> }).financialData || {};
-    const price = (summaryData as { price?: Record<string, { raw?: number }> }).price || {};
-    const quote = quoteData as Record<string, number | undefined>;
-
-    // Build result with fallbacks from multiple sources
+    // Extract fundamentals from quote data
     const result = {
-      marketCap:
-        summary.marketCap?.raw ||
-        price.marketCap?.raw ||
-        quote.marketCap ||
-        null,
-      peRatioTTM:
-        summary.trailingPE?.raw ||
-        quote.trailingPE ||
-        null,
-      dividendYield:
-        (summary.dividendYield?.raw ? summary.dividendYield.raw * 100 : null) ||
-        (quote.trailingAnnualDividendYield ? quote.trailingAnnualDividendYield * 100 : null) ||
-        null,
-      revenueGrowthYoY:
-        (financial.revenueGrowth?.raw ? financial.revenueGrowth.raw * 100 : null) ||
-        null,
-      beta:
-        keyStats.beta?.raw ||
-        summary.beta?.raw ||
-        quote.beta ||
-        null,
+      marketCap: quote.marketCap || null,
+      peRatioTTM: quote.trailingPE || null,
+      dividendYield: quote.trailingAnnualDividendYield
+        ? quote.trailingAnnualDividendYield * 100
+        : null,
+      revenueGrowthYoY: null, // Not available in quote endpoint
+      beta: quote.beta || null,
     };
 
     setCache(cacheKey, result);
     return res.status(200).json(result);
   } catch (error) {
     console.error('Fundamentals error:', error);
-    // Return empty data instead of error to prevent UI from breaking
     return res.status(200).json({
       marketCap: null,
       peRatioTTM: null,
