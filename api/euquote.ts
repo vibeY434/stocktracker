@@ -19,16 +19,46 @@ function setCache(key: string, data: unknown): void {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
+// Known US -> German ticker mappings (for stocks with different symbols)
+const US_TO_DE_MAPPING: Record<string, string[]> = {
+  // Popular small/mid caps with different German tickers
+  'HIMS': ['82W.DE', '82W.F', '82W.SG'],
+  'ONDS': ['6O9.DE', '6O9.F'],  // Ondas Holdings
+  'PLTR': ['PTX.DE', 'PTX.F'],  // Palantir
+  'SOFI': ['4S0.DE', '4S0.F'],  // SoFi Technologies
+  'RIVN': ['1R1.DE', '1R1.F'],  // Rivian
+  'LCID': ['2LC.DE', '2LC.F'],  // Lucid Motors
+  'NIO': ['NIO1.DE', 'NIO1.F'], // NIO
+  'HOOD': ['6HH.DE', '6HH.F'],  // Robinhood
+  'COIN': ['1QZ.DE', '1QZ.F'],  // Coinbase
+  'AFRM': ['5AF.DE', '5AF.F'],  // Affirm
+  'UPST': ['UP2.DE', 'UP2.F'],  // Upstart
+  'RKLB': ['RKLB.DE', 'RKLB.F'], // Rocket Lab
+  'SNOW': ['S4O.DE', 'S4O.F'],  // Snowflake
+  'CRWD': ['C6R.DE', 'C6R.F'],  // CrowdStrike
+  'DDOG': ['4DO.DE', '4DO.F'],  // Datadog
+  'NET': ['N3T.DE', 'N3T.F'],   // Cloudflare
+  'ZS': ['Z1S.DE', 'Z1S.F'],    // Zscaler
+  'TTD': ['T2D.DE', 'T2D.F'],   // The Trade Desk
+  'MARA': ['2M0.DE', '2M0.F'],  // Marathon Digital
+  'RIOT': ['RIO1.DE', 'RIO1.F'], // Riot Platforms
+  'SMCI': ['0AI.DE', '0AI.F'],  // Super Micro Computer
+};
+
 // Generate possible German ticker variants
 function getGermanTickerVariants(usSymbol: string): string[] {
   const base = usSymbol.toUpperCase();
   const variants: string[] = [];
 
-  // Common patterns for German listings
-  // 1. Same ticker with .DE suffix (XETRA)
+  // 1. Check known mapping first
+  if (US_TO_DE_MAPPING[base]) {
+    variants.push(...US_TO_DE_MAPPING[base]);
+  }
+
+  // 2. Same ticker with .DE suffix (XETRA)
   variants.push(`${base}.DE`);
 
-  // 2. Shortened ticker (AMZN -> AMZ, MSFT -> MSF, GOOGL -> GOOG)
+  // 3. Shortened ticker (AMZN -> AMZ, MSFT -> MSF, GOOGL -> GOOG)
   if (base.length >= 4) {
     variants.push(`${base.slice(0, 3)}.DE`);
   }
@@ -36,17 +66,68 @@ function getGermanTickerVariants(usSymbol: string): string[] {
     variants.push(`${base.slice(0, 4)}.DE`);
   }
 
-  // 3. Frankfurt suffix
+  // 4. Frankfurt suffix
   variants.push(`${base}.F`);
   if (base.length >= 4) {
     variants.push(`${base.slice(0, 3)}.F`);
   }
 
-  // 4. Other German exchanges
+  // 5. Other German exchanges
   variants.push(`${base}.MU`); // Munich
   variants.push(`${base}.SG`); // Stuttgart
 
   return variants;
+}
+
+// Search Yahoo Finance for German listings by company name
+async function searchGermanListing(
+  usSymbol: string,
+  apiKey: string,
+  apiHost: string
+): Promise<string | null> {
+  try {
+    // First get the company name from US quote
+    const usResponse = await axios.get(`https://${apiHost}/market/v2/get-quotes`, {
+      params: { symbols: usSymbol, region: 'US' },
+      headers: {
+        'X-RapidAPI-Key': apiKey,
+        'X-RapidAPI-Host': apiHost,
+      },
+      timeout: 5000,
+    });
+
+    const usQuote = usResponse.data?.quoteResponse?.result?.[0];
+    if (!usQuote?.shortName) return null;
+
+    // Search for the company name
+    const searchResponse = await axios.get(`https://${apiHost}/auto-complete`, {
+      params: { q: usQuote.shortName, region: 'DE' },
+      headers: {
+        'X-RapidAPI-Key': apiKey,
+        'X-RapidAPI-Host': apiHost,
+      },
+      timeout: 5000,
+    });
+
+    const results = searchResponse.data?.quotes || [];
+
+    // Find a German listing (XETRA, Frankfurt, etc.)
+    for (const result of results) {
+      const symbol = result.symbol || '';
+      if (
+        symbol.endsWith('.DE') ||
+        symbol.endsWith('.F') ||
+        symbol.endsWith('.MU') ||
+        symbol.endsWith('.SG')
+      ) {
+        return symbol;
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 async function tryGetQuote(
@@ -132,10 +213,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // Fallback: Try searching by company name
+    const searchedSymbol = await searchGermanListing(usSymbol, apiKey, apiHost);
+    if (searchedSymbol) {
+      const quote = await tryGetQuote(searchedSymbol, apiKey, apiHost);
+      if (quote) {
+        const result = {
+          symbol: quote.symbol,
+          price: quote.regularMarketPrice,
+          currency: quote.currency || 'EUR',
+          change: quote.regularMarketChange,
+          changePercent: quote.regularMarketChangePercent,
+          previousClose: quote.regularMarketPreviousClose,
+          open: quote.regularMarketOpen,
+          dayHigh: quote.regularMarketDayHigh,
+          dayLow: quote.regularMarketDayLow,
+          volume: quote.regularMarketVolume,
+          avgVolume30d: quote.averageDailyVolume3Month,
+          timestamp: new Date((quote.regularMarketTime as number) * 1000),
+          exchange: quote.fullExchangeName || quote.exchange,
+          marketState: quote.marketState || 'CLOSED',
+        };
+
+        setCache(cacheKey, result);
+        return res.status(200).json(result);
+      }
+    }
+
     // No German listing found
     return res.status(404).json({
       error: 'No EU listing found',
-      triedVariants: variants
+      triedVariants: variants,
+      searchedSymbol: searchedSymbol || 'none found'
     });
   } catch (error) {
     console.error('EU Quote error:', error);
