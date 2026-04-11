@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
+import { guardApiRequest } from './_lib/requestGuard';
 
 // Simple in-memory cache
 const cache = new Map<string, { data: unknown; timestamp: number }>();
@@ -20,13 +21,8 @@ function setCache(key: string, data: unknown): void {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  if (!guardApiRequest(req, res, 'search', { maxRequests: 40, windowMs: 60 * 1000 })) {
+    return;
   }
 
   const query = req.query.q as string;

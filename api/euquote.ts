@@ -1,5 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
+import { guardApiRequest } from './_lib/requestGuard';
+import {
+  GERMAN_EXCHANGE_CODES,
+  EU_SYMBOL_SUFFIXES,
+  US_TO_DE_MAPPING,
+} from '../src/utils/euTickerMappings';
 
 // Simple in-memory cache
 const cache = new Map<string, { data: unknown; timestamp: number }>();
@@ -19,102 +25,103 @@ function setCache(key: string, data: unknown): void {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
-// Known US -> German ticker mappings (for stocks with different symbols)
-const US_TO_DE_MAPPING: Record<string, string[]> = {
-  // Chinese ADRs
-  'BABA': ['AHLA.DE', 'AHLA.F'],     // Alibaba
-  'BIDU': ['B1C.DE', 'B1C.F'],       // Baidu
-  'JD': ['013A.DE', '013A.F'],       // JD.com
-  'NIO': ['NIO1.DE', 'NIO1.F'],      // NIO
-  'GRAB': ['A6I.DE', 'A6I.F'],       // Grab Holdings
+const NAME_STOPWORDS = new Set([
+  'INC',
+  'INCORPORATED',
+  'CORP',
+  'CORPORATION',
+  'CO',
+  'COMPANY',
+  'HOLDINGS',
+  'HOLDING',
+  'GROUP',
+  'CLASS',
+  'ADR',
+  'PLC',
+  'SA',
+  'SE',
+  'AG',
+  'NV',
+  'THE',
+  'A',
+  'B',
+]);
 
-  // European stocks traded in US
-  'NVO': ['NOV.DE', 'NOVA.F'],       // Novo Nordisk
-  'ADUR': ['1N8.DE', '1N8.F'],       // Adyen (Euronext -> XETRA)
-
-  // Popular growth stocks with different German tickers
-  'HIMS': ['82W.DE', '82W.F', '82W.SG'],
-  'ONDS': ['6O9.DE', '6O9.F'],       // Ondas Holdings
-  'ASTS': ['AS5.DE', 'AS5.F'],       // AST SpaceMobile
-  'OSCR': ['9VY.DE', '9VY.F'],       // Oscar Health
-  'PLTR': ['PTX.DE', 'PTX.F'],       // Palantir
-  'SOFI': ['4S0.DE', '4S0.F'],       // SoFi Technologies
-  'RIVN': ['1R1.DE', '1R1.F'],       // Rivian
-  'LCID': ['2LC.DE', '2LC.F'],       // Lucid Motors
-  'HOOD': ['6HH.DE', '6HH.F'],       // Robinhood
-  'COIN': ['1QZ.DE', '1QZ.F'],       // Coinbase
-  'AFRM': ['5AF.DE', '5AF.F'],       // Affirm
-  'UPST': ['UP2.DE', 'UP2.F'],       // Upstart
-  'RKLB': ['RKLB.DE', 'RKLB.F'],     // Rocket Lab
-  'SNOW': ['S4O.DE', 'S4O.F'],       // Snowflake
-  'CRWD': ['C6R.DE', 'C6R.F'],       // CrowdStrike
-  'DDOG': ['4DO.DE', '4DO.F'],       // Datadog
-  'NET': ['N3T.DE', 'N3T.F'],        // Cloudflare
-  'ZS': ['Z1S.DE', 'Z1S.F'],         // Zscaler
-  'TTD': ['T2D.DE', 'T2D.F'],        // The Trade Desk
-  'MARA': ['2M0.DE', '2M0.F'],       // Marathon Digital
-  'RIOT': ['RIO1.DE', 'RIO1.F'],     // Riot Platforms
-  'SMCI': ['0AI.DE', '0AI.F'],       // Super Micro Computer
-  'ABNB': ['6Z1.DE', '6Z1.F'],       // Airbnb
-  'ACHR': ['AC7.DE', 'AC7.F'],       // Archer Aviation
-  'ZETA': ['3ZT.DE', '3ZT.F'],       // Zeta Global
-  'ZVRA': ['4ZV.DE', '4ZV.F'],       // Zevra Therapeutics
-  'ASPN': ['2AP.DE', '2AP.F'],       // Aspen Aerogels
-  'GRRR': ['1GR.DE', '1GR.F'],       // Gorilla Technology
-  'ONTO': ['0NT.DE', '0NT.F'],       // Onto Innovation
-  'UNH': ['UNH.DE', 'UNH.F'],        // UnitedHealth
-  'UPS': ['UPS.DE', 'UPS.F'],        // UPS
-  'NKE': ['NKE.DE', 'NKE.F'],        // Nike
-  'PYPL': ['2PP.DE', '2PP.F'],       // PayPal
-  'SHOP': ['SH0.DE', 'SH0.F'],       // Shopify
-  'TGT': ['TGT.DE', 'TGT.F'],        // Target
-  'PFE': ['PFE.DE', 'PFE.F'],        // Pfizer
-  'OXY': ['OXY.DE', 'OXY.F'],        // Occidental Petroleum
-  'ANF': ['ANF.DE', 'ANF.F'],        // Abercrombie & Fitch
-};
-
-// Generate possible German ticker variants
-function getGermanTickerVariants(usSymbol: string): string[] {
-  const base = usSymbol.toUpperCase();
-  const variants: string[] = [];
-
-  // 1. Check known mapping first
-  if (US_TO_DE_MAPPING[base]) {
-    variants.push(...US_TO_DE_MAPPING[base]);
-  }
-
-  // 2. Same ticker with .DE suffix (XETRA)
-  variants.push(`${base}.DE`);
-
-  // 3. Shortened ticker (AMZN -> AMZ, MSFT -> MSF, GOOGL -> GOOG)
-  if (base.length >= 4) {
-    variants.push(`${base.slice(0, 3)}.DE`);
-  }
-  if (base.length >= 5) {
-    variants.push(`${base.slice(0, 4)}.DE`);
-  }
-
-  // 4. Frankfurt suffix
-  variants.push(`${base}.F`);
-  if (base.length >= 4) {
-    variants.push(`${base.slice(0, 3)}.F`);
-  }
-
-  // 5. Other German exchanges
-  variants.push(`${base}.MU`); // Munich
-  variants.push(`${base}.SG`); // Stuttgart
-
-  return variants;
+function getMappedGermanTickerVariants(usSymbol: string): string[] {
+  return Array.from(new Set(US_TO_DE_MAPPING[usSymbol.toUpperCase()] ?? []));
 }
 
-// Search Yahoo Finance for German listings by company name
+function normalizeCompanyName(value: string): string {
+  return value.toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+}
+
+function tokenizeCompanyName(value: string): string[] {
+  return normalizeCompanyName(value)
+    .split(' ')
+    .filter((token) => token.length > 1 && !NAME_STOPWORDS.has(token) && !/^\d+$/.test(token));
+}
+
+function isGermanListingCandidate(result: Record<string, unknown>): boolean {
+  const symbol = String(result.symbol ?? '').toUpperCase();
+  const exchange = String(result.exchange ?? result.exchDisp ?? '').toUpperCase();
+
+  return (
+    EU_SYMBOL_SUFFIXES.some((suffix) => symbol.endsWith(suffix)) &&
+    (!exchange || GERMAN_EXCHANGE_CODES.includes(exchange as (typeof GERMAN_EXCHANGE_CODES)[number]))
+  );
+}
+
+function scoreGermanListingCandidate(
+  result: Record<string, unknown>,
+  referenceNames: string[],
+): { score: number; sharedCount: number; overlap: number; exactMatch: boolean } {
+  const candidateName = String(result.longname ?? result.shortname ?? '').trim();
+
+  if (!candidateName) {
+    return { score: -1, sharedCount: 0, overlap: 0, exactMatch: false };
+  }
+
+  const normalizedReferenceNames = new Set(
+    referenceNames.map((name) => normalizeCompanyName(name)).filter(Boolean),
+  );
+  const normalizedCandidateName = normalizeCompanyName(candidateName);
+  const exactMatch = normalizedReferenceNames.has(normalizedCandidateName);
+  const referenceTokens = Array.from(
+    new Set(referenceNames.flatMap((name) => tokenizeCompanyName(name))),
+  );
+  const candidateTokens = Array.from(new Set(tokenizeCompanyName(candidateName)));
+  const referenceTokenSet = new Set(referenceTokens);
+  const sharedCount = candidateTokens.filter((token) => referenceTokenSet.has(token)).length;
+  const overlap = referenceTokens.length ? sharedCount / referenceTokens.length : 0;
+  const exchange = String(result.exchange ?? result.exchDisp ?? '').toUpperCase();
+  const quoteType = String(result.quoteType ?? '').toUpperCase();
+  let score = overlap * 6;
+
+  if (exactMatch) {
+    score += 8;
+  }
+
+  if (sharedCount >= 2) {
+    score += 2;
+  }
+
+  if (exchange === 'XETRA' || exchange === 'GER') {
+    score += 1;
+  }
+
+  if (quoteType === 'EQUITY' || quoteType === 'ETF') {
+    score += 0.5;
+  }
+
+  return { score, sharedCount, overlap, exactMatch };
+}
+
 async function searchGermanListing(
   usSymbol: string,
   apiKey: string,
   apiHost: string
 ): Promise<string | null> {
   try {
-    // First get the company name from US quote
     const usResponse = await axios.get(`https://${apiHost}/market/v2/get-quotes`, {
       params: { symbols: usSymbol, region: 'US' },
       headers: {
@@ -125,11 +132,15 @@ async function searchGermanListing(
     });
 
     const usQuote = usResponse.data?.quoteResponse?.result?.[0];
-    if (!usQuote?.shortName) return null;
+    const referenceNames = [usQuote?.longName, usQuote?.shortName]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
 
-    // Search for the company name
+    if (!referenceNames.length) {
+      return null;
+    }
+
     const searchResponse = await axios.get(`https://${apiHost}/auto-complete`, {
-      params: { q: usQuote.shortName, region: 'DE' },
+      params: { q: referenceNames[0], region: 'DE' },
       headers: {
         'X-RapidAPI-Key': apiKey,
         'X-RapidAPI-Host': apiHost,
@@ -138,21 +149,20 @@ async function searchGermanListing(
     });
 
     const results = searchResponse.data?.quotes || [];
+    const candidates = results
+      .filter((result: Record<string, unknown>) => isGermanListingCandidate(result))
+      .map((result: Record<string, unknown>) => ({
+        symbol: String(result.symbol ?? ''),
+        ...scoreGermanListingCandidate(result, referenceNames),
+      }))
+      .filter(
+        (candidate: { score: number; sharedCount: number; overlap: number; exactMatch: boolean }) =>
+          candidate.score >= 4 &&
+          (candidate.exactMatch || candidate.sharedCount >= 2 || candidate.overlap >= 0.6),
+      )
+      .sort((a, b) => b.score - a.score);
 
-    // Find a German listing (XETRA, Frankfurt, etc.)
-    for (const result of results) {
-      const symbol = result.symbol || '';
-      if (
-        symbol.endsWith('.DE') ||
-        symbol.endsWith('.F') ||
-        symbol.endsWith('.MU') ||
-        symbol.endsWith('.SG')
-      ) {
-        return symbol;
-      }
-    }
-
-    return null;
+    return candidates[0]?.symbol ?? null;
   } catch {
     return null;
   }
@@ -185,12 +195,8 @@ async function tryGetQuote(
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  if (!guardApiRequest(req, res, 'euquote', { maxRequests: 20, windowMs: 60 * 1000 })) {
+    return;
   }
 
   const usSymbol = req.query.symbol as string;
@@ -209,11 +215,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const apiHost = process.env.YAHOO_API_HOST || 'yh-finance.p.rapidapi.com';
 
     if (!apiKey) {
-      return res.status(404).json({ error: 'API key not configured' });
+      return res.status(500).json({ error: 'API key not configured' });
     }
 
-    // Try all German ticker variants
-    const variants = getGermanTickerVariants(usSymbol);
+    const variants = getMappedGermanTickerVariants(usSymbol);
 
     for (const variant of variants) {
       const quote = await tryGetQuote(variant, apiKey, apiHost);
@@ -241,7 +246,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Fallback: Try searching by company name
     const searchedSymbol = await searchGermanListing(usSymbol, apiKey, apiHost);
     if (searchedSymbol) {
       const quote = await tryGetQuote(searchedSymbol, apiKey, apiHost);
@@ -268,11 +272,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // No German listing found
     return res.status(404).json({
       error: 'No EU listing found',
       triedVariants: variants,
-      searchedSymbol: searchedSymbol || 'none found'
+      searchedSymbol: searchedSymbol || 'none found',
     });
   } catch (error) {
     console.error('EU Quote error:', error);

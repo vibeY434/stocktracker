@@ -1,4 +1,4 @@
-import { Card, CardHeader, CardTitle, SkeletonCard } from '@/components/ui';
+import { Card, CardHeader, CardTitle, ErrorMessage, SkeletonCard } from '@/components/ui';
 import { PriceDisplay } from './PriceDisplay';
 import { MarketStatus } from './MarketStatus';
 import { VolumeIndicator } from './VolumeIndicator';
@@ -9,12 +9,24 @@ interface PriceCardProps {
   title: string;
   quote: StockQuote | null | undefined;
   isLoading: boolean;
+  errorMessage?: string;
   notAvailable?: boolean;
 }
 
-export function PriceCard({ title, quote, isLoading, notAvailable }: PriceCardProps) {
+export function PriceCard({ title, quote, isLoading, errorMessage, notAvailable }: PriceCardProps) {
   if (isLoading) {
     return <SkeletonCard />;
+  }
+
+  if (errorMessage) {
+    return (
+      <Card className="h-full">
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+        </CardHeader>
+        <ErrorMessage message={errorMessage} />
+      </Card>
+    );
   }
 
   if (notAvailable || !quote) {
