@@ -31,3 +31,4 @@ server/.env
 
 # Claude
 .claude/
+.vercel

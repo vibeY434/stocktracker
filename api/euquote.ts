@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
-import { guardApiRequest } from './_lib/requestGuard';
+import { guardApiRequest } from './_lib/requestGuard.js';
 import {
   GERMAN_EXCHANGE_CODES,
   EU_SYMBOL_SUFFIXES,
   US_TO_DE_MAPPING,
-} from '../src/utils/euTickerMappings';
+} from '../src/utils/euTickerMappings.js';
 
 // Simple in-memory cache
 const cache = new Map<string, { data: unknown; timestamp: number }>();

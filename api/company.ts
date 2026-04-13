@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
-import { guardApiRequest } from './_lib/requestGuard';
+import { guardApiRequest } from './_lib/requestGuard.js';
 
 // Simple in-memory cache
 const cache = new Map<string, { data: unknown; timestamp: number }>();
