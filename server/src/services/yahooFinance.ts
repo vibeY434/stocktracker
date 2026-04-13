@@ -13,8 +13,12 @@ interface YahooQuoteResponse {
   quoteResponse: {
     result: Array<{
       symbol: string;
+      shortName?: string;
+      longName?: string;
+      displayName?: string;
       regularMarketPrice: number;
       currency: string;
+      financialCurrency?: string;
       regularMarketChange: number;
       regularMarketChangePercent: number;
       regularMarketPreviousClose: number;
@@ -25,6 +29,7 @@ interface YahooQuoteResponse {
       averageDailyVolume3Month: number;
       regularMarketTime: number;
       fullExchangeName: string;
+      exchange?: string;
       marketState: string;
     }>;
   };
@@ -43,12 +48,18 @@ interface YahooSearchResponse {
 }
 
 interface YahooQuoteSummaryResponse {
-  quoteSummary: {
-    result: Array<{
+  quoteSummary?: {
+    result?: Array<{
       assetProfile?: {
         sector: string;
         industry: string;
         country: string;
+      };
+      price?: {
+        shortName?: string;
+        longName?: string;
+        exchangeName?: string;
+        currency?: string;
       };
       summaryDetail?: {
         marketCap?: { raw: number };
@@ -65,6 +76,12 @@ interface YahooQuoteSummaryResponse {
       };
     }>;
   };
+  price?: {
+    shortName?: string;
+    longName?: string;
+    exchangeName?: string;
+    currency?: string;
+  };
 }
 
 interface YahooChartResponse {
@@ -79,6 +96,16 @@ interface YahooChartResponse {
       };
     }>;
   };
+}
+
+function pickBestSymbolMatch<T extends { symbol?: string }>(
+  entries: T[] | undefined,
+  symbol: string,
+): T | undefined {
+  if (!entries?.length) return undefined;
+
+  const normalizedSymbol = symbol.toUpperCase();
+  return entries.find((entry) => entry.symbol?.toUpperCase() === normalizedSymbol) ?? entries[0];
 }
 
 export class YahooFinanceService {
@@ -178,20 +205,61 @@ export class YahooFinanceService {
     const cached = cache.get(cacheKey);
     if (cached) return cached;
 
-    const { data } = await this.client.get<YahooQuoteSummaryResponse>('/stock/v2/get-summary', {
-      params: { symbol, region: 'US' },
-    });
+    const [summaryResponse, quoteResponse, searchResponse] = await Promise.allSettled([
+      this.client.get<YahooQuoteSummaryResponse>('/stock/v2/get-summary', {
+        params: { symbol, region: 'US' },
+      }),
+      this.client.get<YahooQuoteResponse>('/market/v2/get-quotes', {
+        params: { symbols: symbol, region: 'US' },
+      }),
+      this.client.get<YahooSearchResponse>('/auto-complete', {
+        params: { q: symbol, region: 'US' },
+      }),
+    ]);
 
-    const profile = data.quoteSummary.result[0]?.assetProfile;
+    if (
+      summaryResponse.status !== 'fulfilled' &&
+      quoteResponse.status !== 'fulfilled' &&
+      searchResponse.status !== 'fulfilled'
+    ) {
+      throw new Error(`No company data found for symbol: ${symbol}`);
+    }
+
+    const summaryData = summaryResponse.status === 'fulfilled' ? summaryResponse.value.data : null;
+    const quoteData =
+      quoteResponse.status === 'fulfilled'
+        ? pickBestSymbolMatch(quoteResponse.value.data.quoteResponse?.result, symbol)
+        : undefined;
+    const searchMatch =
+      searchResponse.status === 'fulfilled'
+        ? pickBestSymbolMatch(searchResponse.value.data.quotes, symbol)
+        : undefined;
+    const summaryResult = summaryData?.quoteSummary?.result?.[0];
+    const profile = summaryResult?.assetProfile;
+    const priceData = summaryData?.price ?? summaryResult?.price ?? {};
 
     const result = {
-      name: symbol, // Will be overwritten by quote data
+      name:
+        quoteData?.shortName ||
+        quoteData?.longName ||
+        quoteData?.displayName ||
+        priceData.shortName ||
+        priceData.longName ||
+        searchMatch?.longname ||
+        searchMatch?.shortname ||
+        symbol,
       symbol,
       isin: null,
       sector: profile?.sector || 'N/A',
       industry: profile?.industry || 'N/A',
-      exchange: 'N/A',
-      currency: 'USD',
+      exchange:
+        quoteData?.fullExchangeName ||
+        quoteData?.exchange ||
+        priceData.exchangeName ||
+        searchMatch?.exchDisp ||
+        searchMatch?.exchange ||
+        'N/A',
+      currency: quoteData?.currency || quoteData?.financialCurrency || priceData.currency || 'USD',
       country: profile?.country || 'N/A',
     };
 
@@ -208,9 +276,10 @@ export class YahooFinanceService {
       params: { symbol, region: 'US' },
     });
 
-    const summary = data.quoteSummary.result[0]?.summaryDetail;
-    const keyStats = data.quoteSummary.result[0]?.defaultKeyStatistics;
-    const financial = data.quoteSummary.result[0]?.financialData;
+    const summaryResult = data.quoteSummary?.result?.[0];
+    const summary = summaryResult?.summaryDetail;
+    const keyStats = summaryResult?.defaultKeyStatistics;
+    const financial = summaryResult?.financialData;
 
     const result = {
       marketCap: summary?.marketCap?.raw || null,
