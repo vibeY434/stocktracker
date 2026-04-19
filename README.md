@@ -104,7 +104,7 @@ Der lokale Express-Server deckt aktuell diese Routen ab:
 - `/api/fundamentals`
 - `/api/historical`
 
-Die Vercel-spezifische Route `/api/euquote` ist derzeit **nicht** im lokalen Express-Server gespiegelt. Im lokalen Dev-Setup faellt der EU-Market-Vergleich deshalb aktuell auf "nicht verfuegbar" zurueck. Fuer volle Paritaet braucht der Express-Server spaeter eine passende `/api/euquote`-Route oder das Frontend muss gezielt gegen eine Vercel-Preview laufen.
+Der lokale Express-Server spiegelt jetzt auch `/api/euquote`. Der EU-Market-Vergleich laeuft damit im lokalen Dev-Modus nicht mehr stumpf ins Leere, sondern nutzt dieselbe Mapping- und Namenssuche-Idee wie die Vercel-Function.
 
 ## Production / Vercel
 
@@ -113,6 +113,7 @@ Die Vercel-spezifische Route `/api/euquote` ist derzeit **nicht** im lokalen Exp
 - Die API-Routen haben jetzt einen einfachen Request-Guard:
   - engere Browser-Origin-Pruefung fuer dieselbe App / Local Dev
   - in-memory Rate-Limits pro Route und Client-IP
+- Lokal deckt der Express-Server jetzt ebenfalls `search`, `quote`, `euquote`, `company`, `fundamentals` und `historical` ab.
 
 ## Skripte
 

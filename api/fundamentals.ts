@@ -1,24 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
 import { guardApiRequest } from './_lib/requestGuard.js';
+import { makeCache, CACHE_TTL } from './_lib/cache.js';
 
-// Simple in-memory cache
-const cache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-function getFromCache<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.timestamp > CACHE_TTL) {
-    cache.delete(key);
-    return null;
-  }
-  return entry.data as T;
-}
-
-function setCache(key: string, data: unknown): void {
-  cache.set(key, { data, timestamp: Date.now() });
-}
+const cache = makeCache(CACHE_TTL.FUNDAMENTALS);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!guardApiRequest(req, res, 'fundamentals', { maxRequests: 20, windowMs: 60 * 1000 })) {
@@ -31,7 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const cacheKey = `fundamentals:${symbol}`;
-  const cached = getFromCache(cacheKey);
+  const cached = cache.get(cacheKey);
   if (cached) {
     return res.status(200).json(cached);
   }
@@ -82,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       beta: quote.beta || null,
     };
 
-    setCache(cacheKey, result);
+    cache.set(cacheKey, result);
     return res.status(200).json(result);
   } catch (error) {
     console.error('Fundamentals error:', error);

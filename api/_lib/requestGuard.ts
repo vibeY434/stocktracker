@@ -19,6 +19,11 @@ const LOCAL_DEV_ORIGINS = new Set([
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
+// Hard cap: evict the oldest entry when the store exceeds this size.
+// Prevents unbounded growth in high-traffic scenarios (Vercel warm instances
+// serving many unique IPs within a single window).
+const MAX_RATE_LIMIT_ENTRIES = 5_000;
+
 function getAllowedOrigins(req: VercelRequest): Set<string> {
   const allowedOrigins = new Set(LOCAL_DEV_ORIGINS);
   const forwardedHost = req.headers['x-forwarded-host'];
@@ -131,6 +136,14 @@ export function guardApiRequest(
   const existingEntry = rateLimitStore.get(rateLimitKey);
 
   if (!existingEntry || existingEntry.resetAt <= now) {
+    // Evict oldest entry if the store has grown too large.
+    if (rateLimitStore.size >= MAX_RATE_LIMIT_ENTRIES) {
+      const oldestKey = rateLimitStore.keys().next().value;
+      if (oldestKey !== undefined) {
+        rateLimitStore.delete(oldestKey);
+      }
+    }
+
     const resetAt = now + config.windowMs;
     rateLimitStore.set(rateLimitKey, { count: 1, resetAt });
     setRateLimitHeaders(res, config, config.maxRequests - 1, resetAt);

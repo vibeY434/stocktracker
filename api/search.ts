@@ -1,24 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
 import { guardApiRequest } from './_lib/requestGuard.js';
+import { makeCache, CACHE_TTL } from './_lib/cache.js';
 
-// Simple in-memory cache
-const cache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_TTL = 60 * 1000; // 1 minute
-
-function getFromCache<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.timestamp > CACHE_TTL) {
-    cache.delete(key);
-    return null;
-  }
-  return entry.data as T;
-}
-
-function setCache(key: string, data: unknown): void {
-  cache.set(key, { data, timestamp: Date.now() });
-}
+const cache = makeCache(CACHE_TTL.SEARCH);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!guardApiRequest(req, res, 'search', { maxRequests: 40, windowMs: 60 * 1000 })) {
@@ -31,7 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const cacheKey = `search:${query}`;
-  const cached = getFromCache(cacheKey);
+  const cached = cache.get(cacheKey);
   if (cached) {
     return res.status(200).json(cached);
   }
@@ -75,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
       .slice(0, 10);
 
-    setCache(cacheKey, results);
+    cache.set(cacheKey, results);
     return res.status(200).json(results);
   } catch (error) {
     console.error('Search error:', error);

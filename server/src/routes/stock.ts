@@ -37,6 +37,28 @@ router.get('/company', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/euquote?symbol=AAPL
+router.get('/euquote', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.query.symbol as string;
+    if (!symbol) {
+      res.status(400).json({ error: 'Symbol parameter is required' });
+      return;
+    }
+
+    const quote = await yahooFinance.getEuQuote(symbol);
+    if (!quote) {
+      res.status(404).json({ error: 'No EU listing found' });
+      return;
+    }
+
+    res.json(quote);
+  } catch (error) {
+    console.error('Error fetching EU quote:', error);
+    res.status(500).json({ error: 'Failed to fetch EU quote' });
+  }
+});
+
 // GET /api/fundamentals?symbol=AAPL
 router.get('/fundamentals', async (req: Request, res: Response) => {
   try {

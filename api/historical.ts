@@ -1,24 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
 import { guardApiRequest } from './_lib/requestGuard.js';
+import { makeCache, CACHE_TTL } from './_lib/cache.js';
 
-// Simple in-memory cache
-const cache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour
-
-function getFromCache<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.timestamp > CACHE_TTL) {
-    cache.delete(key);
-    return null;
-  }
-  return entry.data as T;
-}
-
-function setCache(key: string, data: unknown): void {
-  cache.set(key, { data, timestamp: Date.now() });
-}
+const cache = makeCache(CACHE_TTL.HISTORICAL);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!guardApiRequest(req, res, 'historical', { maxRequests: 10, windowMs: 60 * 1000 })) {
@@ -33,7 +18,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const cacheKey = `historical:${symbol}:${range}`;
-  const cached = getFromCache(cacheKey);
+  const cached = cache.get(cacheKey);
   if (cached) {
     return res.status(200).json(cached);
   }
@@ -76,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }))
       .filter((d: { close: number | null; volume: number | null }) => d.close !== null && d.volume !== null);
 
-    setCache(cacheKey, result);
+    cache.set(cacheKey, result);
     return res.status(200).json(result);
   } catch (error) {
     console.error('Historical error:', error);

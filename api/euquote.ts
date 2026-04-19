@@ -1,119 +1,18 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
 import { guardApiRequest } from './_lib/requestGuard.js';
+import { makeCache, CACHE_TTL } from './_lib/cache.js';
 import {
-  GERMAN_EXCHANGE_CODES,
-  EU_SYMBOL_SUFFIXES,
-  US_TO_DE_MAPPING,
-} from '../src/utils/euTickerMappings.js';
+  isGermanListingCandidate,
+  scoreGermanListingCandidate,
+  type GermanListingCandidate,
+} from './_lib/euScoring.js';
+import { US_TO_DE_MAPPING } from '../src/utils/euTickerMappings.js';
 
-// Simple in-memory cache
-const cache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_TTL = 30 * 1000; // 30 seconds
-
-function getFromCache<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.timestamp > CACHE_TTL) {
-    cache.delete(key);
-    return null;
-  }
-  return entry.data as T;
-}
-
-function setCache(key: string, data: unknown): void {
-  cache.set(key, { data, timestamp: Date.now() });
-}
-
-const NAME_STOPWORDS = new Set([
-  'INC',
-  'INCORPORATED',
-  'CORP',
-  'CORPORATION',
-  'CO',
-  'COMPANY',
-  'HOLDINGS',
-  'HOLDING',
-  'GROUP',
-  'CLASS',
-  'ADR',
-  'PLC',
-  'SA',
-  'SE',
-  'AG',
-  'NV',
-  'THE',
-  'A',
-  'B',
-]);
+const cache = makeCache(CACHE_TTL.QUOTE);
 
 function getMappedGermanTickerVariants(usSymbol: string): string[] {
   return Array.from(new Set(US_TO_DE_MAPPING[usSymbol.toUpperCase()] ?? []));
-}
-
-function normalizeCompanyName(value: string): string {
-  return value.toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
-}
-
-function tokenizeCompanyName(value: string): string[] {
-  return normalizeCompanyName(value)
-    .split(' ')
-    .filter((token) => token.length > 1 && !NAME_STOPWORDS.has(token) && !/^\d+$/.test(token));
-}
-
-function isGermanListingCandidate(result: Record<string, unknown>): boolean {
-  const symbol = String(result.symbol ?? '').toUpperCase();
-  const exchange = String(result.exchange ?? result.exchDisp ?? '').toUpperCase();
-
-  return (
-    EU_SYMBOL_SUFFIXES.some((suffix) => symbol.endsWith(suffix)) &&
-    (!exchange || GERMAN_EXCHANGE_CODES.includes(exchange as (typeof GERMAN_EXCHANGE_CODES)[number]))
-  );
-}
-
-function scoreGermanListingCandidate(
-  result: Record<string, unknown>,
-  referenceNames: string[],
-): { score: number; sharedCount: number; overlap: number; exactMatch: boolean } {
-  const candidateName = String(result.longname ?? result.shortname ?? '').trim();
-
-  if (!candidateName) {
-    return { score: -1, sharedCount: 0, overlap: 0, exactMatch: false };
-  }
-
-  const normalizedReferenceNames = new Set(
-    referenceNames.map((name) => normalizeCompanyName(name)).filter(Boolean),
-  );
-  const normalizedCandidateName = normalizeCompanyName(candidateName);
-  const exactMatch = normalizedReferenceNames.has(normalizedCandidateName);
-  const referenceTokens = Array.from(
-    new Set(referenceNames.flatMap((name) => tokenizeCompanyName(name))),
-  );
-  const candidateTokens = Array.from(new Set(tokenizeCompanyName(candidateName)));
-  const referenceTokenSet = new Set(referenceTokens);
-  const sharedCount = candidateTokens.filter((token) => referenceTokenSet.has(token)).length;
-  const overlap = referenceTokens.length ? sharedCount / referenceTokens.length : 0;
-  const exchange = String(result.exchange ?? result.exchDisp ?? '').toUpperCase();
-  const quoteType = String(result.quoteType ?? '').toUpperCase();
-  let score = overlap * 6;
-
-  if (exactMatch) {
-    score += 8;
-  }
-
-  if (sharedCount >= 2) {
-    score += 2;
-  }
-
-  if (exchange === 'XETRA' || exchange === 'GER') {
-    score += 1;
-  }
-
-  if (quoteType === 'EQUITY' || quoteType === 'ETF') {
-    score += 0.5;
-  }
-
-  return { score, sharedCount, overlap, exactMatch };
 }
 
 async function searchGermanListing(
@@ -148,15 +47,15 @@ async function searchGermanListing(
       timeout: 5000,
     });
 
-    const results = searchResponse.data?.quotes || [];
+    const results: GermanListingCandidate[] = searchResponse.data?.quotes ?? [];
     const candidates = results
-      .filter((result: Record<string, unknown>) => isGermanListingCandidate(result))
-      .map((result: Record<string, unknown>) => ({
+      .filter((result) => isGermanListingCandidate(result))
+      .map((result) => ({
         symbol: String(result.symbol ?? ''),
         ...scoreGermanListingCandidate(result, referenceNames),
       }))
       .filter(
-        (candidate: { score: number; sharedCount: number; overlap: number; exactMatch: boolean }) =>
+        (candidate) =>
           candidate.score >= 4 &&
           (candidate.exactMatch || candidate.sharedCount >= 2 || candidate.overlap >= 0.6),
       )
@@ -205,7 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const cacheKey = `eu-quote:${usSymbol}`;
-  const cached = getFromCache(cacheKey);
+  const cached = cache.get(cacheKey);
   if (cached) {
     return res.status(200).json(cached);
   }
@@ -241,7 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           marketState: quote.marketState || 'CLOSED',
         };
 
-        setCache(cacheKey, result);
+        cache.set(cacheKey, result);
         return res.status(200).json(result);
       }
     }
@@ -267,7 +166,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           marketState: quote.marketState || 'CLOSED',
         };
 
-        setCache(cacheKey, result);
+        cache.set(cacheKey, result);
         return res.status(200).json(result);
       }
     }
