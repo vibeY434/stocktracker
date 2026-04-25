@@ -8,10 +8,10 @@ export function LandingPage() {
       {/* Hero Section */}
       <div className="text-center mb-8">
         <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-          Stock Overview
+          w3yh Markets
         </h1>
         <p className="text-lg md:text-xl text-gray-600 max-w-2xl mx-auto">
-          Real-time US & EU market data for long-term investors
+          Fast US & EU market data for quotes, fundamentals, and live context
         </p>
       </div>
 
@@ -36,7 +36,7 @@ export function LandingPage() {
         />
         <FeatureCard
           icon={<TrendingUp className="w-6 h-6" />}
-          title="SMA Signals"
+          title="Trend Signals"
           description="50 & 200 day"
         />
         <FeatureCard

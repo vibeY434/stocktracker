@@ -5,7 +5,7 @@ import { PriceCardsContainer } from './price';
 import { MarketHoursOverview } from './market';
 import { BetaDisplay } from './risk';
 import { QuickFundamentals } from './fundamentals';
-import { LongInvestorSignals } from './signals';
+import { MarketSignals } from './signals';
 
 export function StockOverview() {
   const { selectedStock } = useAppStore();
@@ -53,7 +53,7 @@ export function StockOverview() {
         />
       </div>
 
-      <LongInvestorSignals
+      <MarketSignals
         historicalData={historicalData}
         currentPrice={usQuote?.price}
         currency={usQuote?.currency || 'USD'}

@@ -21,8 +21,8 @@ export function Header() {
             <LineChart className="w-6 h-6 text-white" />
           </div>
           <div className="text-left">
-            <h1 className="text-xl font-bold text-gray-900">Stock Tracker</h1>
-            <p className="text-sm text-gray-500">Long-term investor overview</p>
+            <h1 className="text-xl font-bold text-gray-900">w3yh Markets</h1>
+            <p className="text-sm text-gray-500">Quotes, fundamentals, market context</p>
           </div>
         </button>
       </div>

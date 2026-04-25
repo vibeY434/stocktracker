@@ -5,7 +5,7 @@ import { formatCurrency, formatPercent } from '@/utils';
 import { calculateTechnicalSignals } from '@/services/calculations';
 import type { HistoricalDataPoint } from '@/types';
 
-interface LongInvestorSignalsProps {
+interface MarketSignalsProps {
   historicalData: HistoricalDataPoint[] | undefined;
   currentPrice: number | undefined;
   currency: string;
@@ -60,17 +60,17 @@ const signalsTooltipContent = (
   </div>
 );
 
-export function LongInvestorSignals({
+export function MarketSignals({
   historicalData,
   currentPrice,
   currency,
   isLoading,
-}: LongInvestorSignalsProps) {
+}: MarketSignalsProps) {
   if (isLoading) {
     return (
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Long-Investor Signals</CardTitle>
+          <CardTitle>Trend Signals</CardTitle>
         </CardHeader>
         <div className="space-y-3">
           <Skeleton className="h-16 w-full" />
@@ -84,7 +84,7 @@ export function LongInvestorSignals({
     return (
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Long-Investor Signals</CardTitle>
+          <CardTitle>Trend Signals</CardTitle>
         </CardHeader>
         <div className="text-center py-4 text-gray-400">
           Insufficient historical data for SMA calculations
@@ -99,7 +99,7 @@ export function LongInvestorSignals({
     return (
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Long-Investor Signals</CardTitle>
+          <CardTitle>Trend Signals</CardTitle>
         </CardHeader>
         <div className="text-center py-4 text-gray-400">
           Unable to calculate signals
@@ -113,7 +113,7 @@ export function LongInvestorSignals({
       <CardHeader className="flex flex-row items-center justify-between">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-gray-500" />
-          <CardTitle>Long-Investor Signals</CardTitle>
+          <CardTitle>Trend Signals</CardTitle>
         </div>
         <Tooltip content={signalsTooltipContent}>
           <span className="text-xs text-gray-400 cursor-help hover:text-gray-600">

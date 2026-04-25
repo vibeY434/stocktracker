@@ -1,1 +1,1 @@
-export * from './LongInvestorSignals';
+export * from './MarketSignals';

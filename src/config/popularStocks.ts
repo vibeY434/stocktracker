@@ -1,6 +1,4 @@
-// Popular stocks to prefetch - combination of:
-// 1. Stocks from the US->DE mapping (portfolio relevant)
-// 2. Top traded stocks on NASDAQ/NYSE
+// Public market examples to prefetch - broad, recognizable tickers only.
 
 export interface PopularStock {
   symbol: string;
@@ -8,7 +6,6 @@ export interface PopularStock {
   exchange: string;
 }
 
-// Portfolio stocks from mapping + top volume stocks
 export const POPULAR_STOCKS: PopularStock[] = [
   // Mega caps - highest volume
   { symbol: 'NVDA', name: 'NVIDIA Corporation', exchange: 'NASDAQ' },
@@ -19,16 +16,6 @@ export const POPULAR_STOCKS: PopularStock[] = [
   { symbol: 'META', name: 'Meta Platforms Inc.', exchange: 'NASDAQ' },
   { symbol: 'TSLA', name: 'Tesla Inc.', exchange: 'NASDAQ' },
   { symbol: 'AMD', name: 'Advanced Micro Devices', exchange: 'NASDAQ' },
-
-  // Portfolio favorites
-  { symbol: 'HIMS', name: 'Hims & Hers Health', exchange: 'NYSE' },
-  { symbol: 'PLTR', name: 'Palantir Technologies', exchange: 'NYSE' },
-  { symbol: 'SOFI', name: 'SoFi Technologies', exchange: 'NASDAQ' },
-  { symbol: 'NIO', name: 'NIO Inc.', exchange: 'NYSE' },
-  { symbol: 'BABA', name: 'Alibaba Group', exchange: 'NYSE' },
-  { symbol: 'COIN', name: 'Coinbase Global', exchange: 'NASDAQ' },
-  { symbol: 'ASTS', name: 'AST SpaceMobile', exchange: 'NASDAQ' },
-  { symbol: 'RIVN', name: 'Rivian Automotive', exchange: 'NASDAQ' },
 
   // High volume tech
   { symbol: 'INTC', name: 'Intel Corporation', exchange: 'NASDAQ' },
@@ -61,6 +48,8 @@ export const POPULAR_STOCKS: PopularStock[] = [
   { symbol: 'CAT', name: 'Caterpillar Inc.', exchange: 'NYSE' },
 
   // Chinese ADRs
+  { symbol: 'BABA', name: 'Alibaba Group', exchange: 'NYSE' },
+  { symbol: 'NIO', name: 'NIO Inc.', exchange: 'NYSE' },
   { symbol: 'BIDU', name: 'Baidu Inc.', exchange: 'NASDAQ' },
   { symbol: 'JD', name: 'JD.com Inc.', exchange: 'NASDAQ' },
   { symbol: 'GRAB', name: 'Grab Holdings', exchange: 'NASDAQ' },
@@ -89,7 +78,7 @@ export function getStocksByCategory() {
       ['NVDA', 'AAPL', 'MSFT', 'GOOGL', 'META', 'AMD', 'INTC'].includes(s.symbol)
     ),
     growth: POPULAR_STOCKS.filter(s =>
-      ['HIMS', 'PLTR', 'SOFI', 'ASTS', 'COIN', 'RIVN', 'HOOD'].includes(s.symbol)
+      ['CRWD', 'SNOW', 'DDOG', 'NET', 'ABNB', 'RBLX', 'HOOD', 'SMCI'].includes(s.symbol)
     ),
     healthcare: POPULAR_STOCKS.filter(s =>
       ['UNH', 'JNJ', 'PFE', 'NVO'].includes(s.symbol)
